@@ -76,17 +76,7 @@ Complete them in this exact sequence:
 | 6 | **Make OrderFlow Production Ready** | Hardening, global error handling, logging, health checks, performance, full test coverage |
 | 7 | *(Optional)* **Add Redis Session Management** | Redis-backed, revocable sessions once the main work is complete |
 
-## 7. Suggested pacing
-
-- **Days 1–3:** Issue 1 — foundation, domain model, endpoints, migrations.
-- **Days 4–6:** Issue 2 — SQL Server reporting, stored procedures, indexes.
-- **Days 7–9:** Issues 3–4 — safe order processing, then concurrency.
-- **Days 10–12:** Issues 5–6 — auth/authorization/auditing, then production readiness.
-- **Final days:** Optional Issue 7, polish, and a full clean-checkout test run.
-
-This is a guide, not a rule — the acceptance criteria are what count.
-
-## 8. Final expectations
+## 7. Final expectations
 
 The completed project should represent a **realistic backend service rather than a tutorial CRUD application**. It should demonstrate:
 
