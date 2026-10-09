@@ -31,6 +31,10 @@ namespace OrderFlow.Api.Data
         .HasForeignKey(oi => oi.OrderId)
         .OnDelete(DeleteBehavior.Cascade);
 
+    modelBuilder.Entity<OrderItem>()
+        .Property(oi => oi.UnitPrice)
+        .HasPrecision(18,2);
+
     modelBuilder.Entity<Product>()
         .HasMany(p => p.OrderItems)
         .WithOne(oi => oi.Product)
