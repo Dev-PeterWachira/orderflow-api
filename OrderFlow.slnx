@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="OrderFlow.Api.Tests/OrderFlow.Api.Tests.csproj" />
+  <Project Path="OrderFlow.Api/OrderFlow.Api.csproj" />
+</Solution>
