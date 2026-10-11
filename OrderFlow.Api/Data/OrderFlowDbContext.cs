@@ -1,6 +1,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using OrderFlow.Api.Models;
+using OrderFlow.Api.Models.Reporting;
 
 namespace OrderFlow.Api.Data
 {
@@ -15,6 +16,11 @@ namespace OrderFlow.Api.Data
         public DbSet<Product> Products => Set<Product>();
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+
+        public DbSet<SalesSummaryRow> SalesSummaryRows => Set<SalesSummaryRow>();
+        public DbSet<DailySalesRow> DailySalesRows => Set<DailySalesRow>();
+        public DbSet<ProductSalesRow> ProductSalesRows => Set<ProductSalesRow>();
+        public DbSet<CustomerOrderHistoryRow> CustomerOrderHistoryRows => Set<CustomerOrderHistoryRow>();
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -59,6 +65,12 @@ namespace OrderFlow.Api.Data
         .Property(c => c.Email)
         .IsRequired()
         .HasMaxLength(320);
+
+
+    modelBuilder.Entity<SalesSummaryRow>().HasNoKey();
+    modelBuilder.Entity<DailySalesRow>().HasNoKey();
+    modelBuilder.Entity<ProductSalesRow>().HasNoKey();
+    modelBuilder.Entity<CustomerOrderHistoryRow>().HasNoKey();
 }
     }
 }

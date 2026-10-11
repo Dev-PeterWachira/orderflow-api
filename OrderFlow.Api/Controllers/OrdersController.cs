@@ -16,8 +16,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<OrderResponse>> Create(
-        CreateOrderRequest request)
+    public async Task<ActionResult<OrderResponse>> Create(CreateOrderRequest request)
     {
         try
         {
