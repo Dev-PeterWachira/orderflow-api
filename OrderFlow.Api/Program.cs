@@ -13,6 +13,7 @@ builder.Services.AddDbContext<OrderFlowDbContext>(options =>
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 
 
 

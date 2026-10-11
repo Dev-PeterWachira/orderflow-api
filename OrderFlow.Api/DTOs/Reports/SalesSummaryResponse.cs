@@ -1,4 +1,4 @@
-namespace OrderFlow.Api.DTOS.Reports;
+namespace OrderFlow.Api.DTOs.Reports;
 
 public class SalesSummaryResponse
 {
