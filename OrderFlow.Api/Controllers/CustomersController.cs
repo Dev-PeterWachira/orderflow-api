@@ -1,5 +1,5 @@
-using System.Runtime.Versioning;
-using Microsoft.AspNetCore;
+
+using Microsoft.AspNetCore.Mvc;
 using OrderFlow.Api.DTOs.Customers;
 using OrderFlow.Api.Services;
 
@@ -21,7 +21,7 @@ namespace OrderFlow.Api.Controllers
         public async Task<ActionResult<CustomerResponse>> Create(CustomerCreateRequest request)
 
         {
-            var customer = await _customerService.CreateAsnc(request);
+            var customer = await _customerService.CreateAsync(request);
 
             return CreatedAtAction(
                 nameof(GetById),

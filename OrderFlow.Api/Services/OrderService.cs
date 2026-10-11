@@ -14,8 +14,7 @@ public class OrderService : IOrderService
         _context = context;
     }
 
-    public async Task<OrderResponse?> CreateAsync(
-        CreateOrderRequest request)
+    public async Task<OrderResponse?> CreateAsync (CreateOrderRequest request)
     {
         // 1. Ensure the customer exists.
         var customerExists = await _context.Customers
@@ -29,11 +28,12 @@ public class OrderService : IOrderService
                 "An order must contain at least one item.");
 
         // Keep one line per product in an order.
+        // Select extracts product ids in this case. Distinct() removes duplicates
         var productIds = request.Items
             .Select(i => i.ProductId)
             .ToList();
 
-        if (productIds.Distinct().Count() != productIds.Count)
+        if (productIds.Distinct().Count() != productIds.Count) // if the number of distinct ids < original count, duplicate product ids were supplied. 
             throw new InvalidOrderException(
                 "A product can only appear once per order.");
 
@@ -58,8 +58,7 @@ public class OrderService : IOrderService
                 var product = products[item.ProductId];
 
                 if (item.Quantity <= 0)
-                    throw new InvalidOrderException(
-                        "Quantity must be greater than zero.");
+                    throw new InvalidOrderException("Quantity must be greater than zero.");
 
                 return new OrderItem
                 {
