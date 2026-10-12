@@ -66,11 +66,35 @@ namespace OrderFlow.Api.Data
         .IsRequired()
         .HasMaxLength(320);
 
+    modelBuilder.Entity<Order>()
+    .HasIndex(o => new { o.Status, o.CreatedAt })
+    .HasDatabaseName("IX_Orders_Status_CreatedAt");
 
-    modelBuilder.Entity<SalesSummaryRow>().HasNoKey();
-    modelBuilder.Entity<DailySalesRow>().HasNoKey();
-    modelBuilder.Entity<ProductSalesRow>().HasNoKey();
-    modelBuilder.Entity<CustomerOrderHistoryRow>().HasNoKey();
+    modelBuilder.Entity<Order>()
+    .HasIndex(o => new { o.CustomerId, o.CreatedAt })
+    .HasDatabaseName("IX_Orders_CustomerId_CreatedAt");
+
+    modelBuilder.Entity<OrderItem>()
+    .HasIndex(oi => new { oi.ProductId, oi.OrderId })
+    .HasDatabaseName("IX_OrderItems_ProductId_OrderId");
+
+
+    modelBuilder.Entity<SalesSummaryRow>()
+    .HasNoKey()
+    .Property(x => x.Revenue)
+    .HasPrecision(18,2);
+    modelBuilder.Entity<DailySalesRow>()
+    .HasNoKey()
+    .Property(x => x.Revenue)
+    .HasPrecision(18,2);
+    modelBuilder.Entity<ProductSalesRow>()
+    .HasNoKey()
+    .Property(x => x.Revenue)
+    .HasPrecision(18,2);
+    modelBuilder.Entity<CustomerOrderHistoryRow>()
+    .HasNoKey()
+    .Property(x => x.Total)
+    .HasPrecision(18,2);
 }
     }
 }

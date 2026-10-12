@@ -6,38 +6,34 @@ using OrderFlow.Api.Models.Reporting;
 
 namespace OrderFlow.Api.Services;
 
-public class ReportService(OrderFlowDbContext dbContext) : IReportService
-{
-    public async Task<SalesSummaryResponse> GetSalesAsync(
-        DateTime startDate,
-        DateTime endDate,
-        CancellationToken cancellationToken = default)
+  public class ReportService(OrderFlowDbContext dbContext) : IReportService
+ {
+  public async Task<SalesSummaryResponse> GetSalesAsync (DateTime startDate,DateTime endDate,CancellationToken cancellationToken = default)
+ {
+    var completedStatus = (int)OrderStatus.Completed;
+
+    var query = dbContext.SalesSummaryRows
+        .FromSqlInterpolated($"""
+            EXEC dbo.GetSalesSummary
+                @StartDate = {startDate},
+                @EndDate = {endDate},
+                @CompletedStatus = {completedStatus}
+            """)
+        .AsNoTracking()
+        .AsAsyncEnumerable();
+
+    await foreach (var row in query.WithCancellation(cancellationToken))
     {
-        var completedStatus = (int)OrderStatus.Completed;
-
-        var result = await dbContext.SalesSummaryRows
-            .FromSqlInterpolated($"""
-                SELECT
-                    COUNT(DISTINCT o.Id) AS OrderCount,
-                    COALESCE(SUM(oi.Quantity), 0) AS ItemsSold,
-                    COALESCE(SUM(oi.UnitPrice * oi.Quantity), 0) AS Revenue
-                FROM dbo.Orders AS o
-                LEFT JOIN dbo.OrderItems AS oi ON oi.OrderId = o.Id
-                WHERE o.Status = {completedStatus}
-                  AND o.CreatedAt >= {startDate}
-                  AND o.CreatedAt < {endDate}
-                """)
-            .AsNoTracking()
-            .SingleAsync(cancellationToken);
-
         return new SalesSummaryResponse
         {
-            OrderCount = result.OrderCount,
-            ItemsSold = result.ItemsSold,
-            Revenue = result.Revenue
+            OrderCount = row.OrderCount,
+            ItemsSold = row.ItemsSold,
+            Revenue = row.Revenue
         };
     }
 
+    throw new InvalidOperationException("The sales summary procedure returned no rows.");
+}
     public async Task<IReadOnlyList<DailySalesResponse>> GetDailySalesAsync(
         DateTime startDate,
         DateTime endDate,
@@ -129,7 +125,7 @@ public class ReportService(OrderFlowDbContext dbContext) : IReportService
                   AND o.CreatedAt >= {startDate}
                   AND o.CreatedAt < {endDate}
                 GROUP BY p.Id, p.Name
-                ORDER BY SUM(oi.UnitPrice * oi.Quantity) DESC
+                ORDER BY SUM(oi.UnitPrice * oi.Quantity) DESC, p.Id ASC
                 """)
             .AsNoTracking()
             .ToListAsync(cancellationToken);

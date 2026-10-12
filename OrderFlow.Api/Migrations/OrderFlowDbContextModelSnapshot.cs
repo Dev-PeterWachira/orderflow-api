@@ -42,7 +42,7 @@ namespace OrderFlow.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Customers");
+                    b.ToTable("Customers", (string)null);
                 });
 
             modelBuilder.Entity("OrderFlow.Api.Models.Order", b =>
@@ -64,9 +64,13 @@ namespace OrderFlow.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CustomerId");
+                    b.HasIndex("CustomerId", "CreatedAt")
+                        .HasDatabaseName("IX_Orders_CustomerId_CreatedAt");
 
-                    b.ToTable("Orders");
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("IX_Orders_Status_CreatedAt");
+
+                    b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("OrderFlow.Api.Models.OrderItem", b =>
@@ -94,9 +98,10 @@ namespace OrderFlow.Api.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.HasIndex("ProductId");
+                    b.HasIndex("ProductId", "OrderId")
+                        .HasDatabaseName("IX_OrderItems_ProductId_OrderId");
 
-                    b.ToTable("OrderItems");
+                    b.ToTable("OrderItems", (string)null);
                 });
 
             modelBuilder.Entity("OrderFlow.Api.Models.Product", b =>
@@ -121,7 +126,76 @@ namespace OrderFlow.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", (string)null);
+                });
+
+            modelBuilder.Entity("OrderFlow.Api.Models.Reporting.CustomerOrderHistoryRow", b =>
+                {
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ItemsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.ToTable("CustomerOrderHistoryRows", (string)null);
+                });
+
+            modelBuilder.Entity("OrderFlow.Api.Models.Reporting.DailySalesRow", b =>
+                {
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ItemsSold")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrderCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Revenue")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.ToTable("DailySalesRows", (string)null);
+                });
+
+            modelBuilder.Entity("OrderFlow.Api.Models.Reporting.ProductSalesRow", b =>
+                {
+                    b.Property<int>("ItemsSold")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Revenue")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.ToTable("ProductSalesRows", (string)null);
+                });
+
+            modelBuilder.Entity("OrderFlow.Api.Models.Reporting.SalesSummaryRow", b =>
+                {
+                    b.Property<int>("ItemsSold")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrderCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Revenue")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.ToTable("SalesSummaryRows", (string)null);
                 });
 
             modelBuilder.Entity("OrderFlow.Api.Models.Order", b =>
