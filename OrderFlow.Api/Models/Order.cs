@@ -15,5 +15,7 @@ namespace OrderFlow.Api.Models
         public Customer Customer {get; set;} = null!;
 
         public ICollection<OrderItem> OrderItems {get; set;} = new List<OrderItem>();
+
+        public byte[] RowVersion {get; set;} = null!;
     }
 }

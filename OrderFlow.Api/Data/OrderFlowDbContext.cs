@@ -27,6 +27,19 @@ namespace OrderFlow.Api.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
+    if(Database.IsSqlServer())
+            {
+                modelBuilder.Entity<Order>()
+                     .Property(o => o.RowVersion)
+                     .IsRowVersion();
+            }
+            else
+            {
+                // keep SQLite-based service tests working without SQL Server rowVersion
+                modelBuilder.Entity<Order>()
+                      .Ignore(o => o.RowVersion);
+            }
+
     modelBuilder.Entity<Customer>()
         .HasMany(c => c.Orders)
         .WithOne(o => o.Customer)

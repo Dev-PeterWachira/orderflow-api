@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using OrderFlow.Api.DTOs.Orders;
 using OrderFlow.Api.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace OrderFlow.Api.Controllers;
 
@@ -86,5 +87,12 @@ public class OrdersController : ControllerBase
     {
         return Conflict(new { error = ex.Message });
     }
+    catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new
+            {
+                error = "The order was modified by another request. Please refresh and try again."
+            });
+        }
  }
  }
