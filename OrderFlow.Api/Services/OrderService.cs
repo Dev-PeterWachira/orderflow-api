@@ -89,8 +89,7 @@ public class OrderService : IOrderService
         return order is null ? null : MapToResponse(order);
     }
 
-    public async Task<(IEnumerable<OrderResponse> Items, int TotalCount)>
-        GetAllAsync(int page, int pageSize)
+    public async Task<(IEnumerable<OrderResponse> Items, int TotalCount)> GetAllAsync(int page, int pageSize)
     {
         var query = _context.Orders
             .AsNoTracking()
@@ -108,6 +107,99 @@ public class OrderService : IOrderService
 
         return (orders.Select(MapToResponse), totalCount);
     }
+
+    
+public async Task<OrderResponse?> ProcessAsync (int orderId,CancellationToken cancellationToken = default)
+{
+    await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+    try
+    {
+        // 1. Atomically claim the order.
+        // Only one request can change Pending to Processing.
+        var claimed = await _context.Orders
+            .Where(o =>
+                o.Id == orderId &&
+                o.Status == OrderStatus.Pending)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    o => o.Status,
+                    OrderStatus.Processing),
+                cancellationToken);
+
+        if (claimed == 0)
+        {
+            var exists = await _context.Orders
+                .AnyAsync(o => o.Id == orderId, cancellationToken);
+
+            if (!exists)
+                return null;
+
+            throw new InvalidOrderException(
+                "This order has already been processed or cannot be processed.");
+        }
+
+        // 2. Load the order and its items.
+        var order = await _context.Orders
+            .Include(o => o.OrderItems)
+                .ThenInclude(item => item.Product)
+            .SingleAsync(o => o.Id == orderId, cancellationToken);
+
+        if (order.OrderItems.Count == 0)
+            throw new InvalidOrderException(
+                "An order must contain at least one item.");
+
+        // Use the price snapshot saved when the order was created.
+        var total = order.OrderItems.Sum(
+            item => item.UnitPrice * item.Quantity);
+
+        // 3. Reduce stock using conditional database updates.
+        foreach (var item in order.OrderItems)
+        {
+            if (item.Quantity <= 0)
+                throw new InvalidOrderException(
+                    "Order item quantities must be greater than zero.");
+
+            var updated = await _context.Products
+                .Where(p =>
+                    p.Id == item.ProductId &&
+                    p.StockQuantity >= item.Quantity)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        p => p.StockQuantity,
+                        p => p.StockQuantity - item.Quantity),
+                    cancellationToken);
+
+            if (updated != 1)
+            {
+                throw new InvalidOrderException(
+                    $"Insufficient stock for product {item.ProductId}.");
+            }
+        }
+
+        // 4. Record payment and complete the order.
+        _context.Payments.Add(new Payment
+        {
+            OrderId = order.Id,
+            Amount = total,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        order.Status = OrderStatus.Completed;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // 5. Commit all changes together.
+        await transaction.CommitAsync(cancellationToken);
+
+        return MapToResponse(order);
+    }
+    catch
+    {
+        await transaction.RollbackAsync(cancellationToken);
+        throw;
+    }
+}
 
     private static OrderResponse MapToResponse(Order order)
     {

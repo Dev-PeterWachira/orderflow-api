@@ -68,4 +68,23 @@ public class OrdersController : ControllerBase
                 result.TotalCount / (double)pageSize)
         });
     }
-}
+
+    
+ [HttpPost("{id:int}/process")]
+ public async Task<ActionResult<OrderResponse>> Process(int id,CancellationToken cancellationToken)
+ {
+    try
+    {
+        var order = await _orderService.ProcessAsync(id, cancellationToken);
+
+        if (order is null)
+            return NotFound();
+
+        return Ok(order);
+    }
+    catch (InvalidOrderException ex)
+    {
+        return Conflict(new { error = ex.Message });
+    }
+ }
+ }

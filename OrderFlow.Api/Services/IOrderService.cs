@@ -9,4 +9,6 @@ public interface IOrderService
     Task<OrderResponse?> GetByIdAsync(int id);
 
     Task<(IEnumerable<OrderResponse> Items, int TotalCount)> GetAllAsync(int page,int pageSize);
+
+    Task<OrderResponse?> ProcessAsync(int orderID, CancellationToken cancellationToken = default);
 }

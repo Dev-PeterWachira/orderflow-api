@@ -22,6 +22,8 @@ namespace OrderFlow.Api.Data
         public DbSet<ProductSalesRow> ProductSalesRows => Set<ProductSalesRow>();
         public DbSet<CustomerOrderHistoryRow> CustomerOrderHistoryRows => Set<CustomerOrderHistoryRow>();
 
+        public DbSet<Payment> Payments => Set<Payment>();
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
@@ -95,6 +97,22 @@ namespace OrderFlow.Api.Data
     .HasNoKey()
     .Property(x => x.Total)
     .HasPrecision(18,2);
+
+
+    modelBuilder.Entity<Payment>()
+    .HasOne(p => p.Order)
+    .WithMany()
+    .HasForeignKey(p => p.OrderId)
+    .OnDelete(DeleteBehavior.Restrict);
+
+    modelBuilder.Entity<Payment>()
+    .Property(p => p.Amount)
+    .HasPrecision(18,2);
+
+    modelBuilder.Entity<Payment>()
+    .HasIndex(p => p.OrderId)
+    .IsUnique()
+    .HasDatabaseName("IX_Payments_OrderId");
 }
     }
 }
