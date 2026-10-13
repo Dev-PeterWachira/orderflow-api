@@ -117,6 +117,34 @@ public class OrdersController : ControllerBase
         }
  }
 
+ [HttpPost("{id:int}/cancel")]
+public async Task<ActionResult<OrderResponse>> Cancel(
+    int id,
+    CancellationToken cancellationToken)
+{
+    var customerId = GetAuthenticatedCustomerId();
+
+    if (!customerId.HasValue)
+        return Forbid();
+
+    try
+    {
+        var order = await _orderService.CancelAsync(
+            id,
+            customerId.Value,
+            cancellationToken);
+
+        if (order is null)
+            return NotFound();
+
+        return Ok(order);
+    }
+    catch (InvalidOrderException ex)
+    {
+        return Conflict(new { error = ex.Message });
+    }
+}
+
 
    private int? GetAuthenticatedCustomerId()
     {

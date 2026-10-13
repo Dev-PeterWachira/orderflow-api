@@ -213,6 +213,70 @@ public async Task<OrderResponse?> ProcessAsync (int orderId,CancellationToken ca
         throw;
     }
 }
+    public async Task<OrderResponse?> CancelAsync(
+    int orderId,
+    int customerId,
+    CancellationToken cancellationToken = default)
+{
+    await using var transaction =
+        await _context.Database.BeginTransactionAsync(cancellationToken);
+
+    try
+    {
+        // Only the owning customer can cancel a Pending order.
+        var claimed = await _context.Orders
+            .Where(o =>
+                o.Id == orderId &&
+                o.CustomerId == customerId &&
+                o.Status == OrderStatus.Pending)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    o => o.Status,
+                    OrderStatus.Cancelled),
+                cancellationToken);
+
+        if (claimed == 0)
+        {
+            var orderExists = await _context.Orders
+                .AnyAsync(o => o.Id == orderId, cancellationToken);
+
+            if (!orderExists)
+                return null;
+
+            throw new InvalidOrderException(
+                "The order cannot be cancelled. It may not belong to you, " +
+                "or it may already have been processed.");
+        }
+
+        var order = await _context.Orders
+            .Include(o => o.OrderItems)
+                .ThenInclude(item => item.Product)
+            .SingleAsync(o => o.Id == orderId, cancellationToken);
+
+        // Record the cancellation in the same transaction.
+        _context.AuditLogs.Add(new AuditLog
+        {
+            ActorId = customerId.ToString(),
+            ActorRole = "Customer",
+            Action = "OrderCancelled",
+            EntityType = "Order",
+            EntityId = order.Id,
+            TimestampUtc = DateTime.UtcNow,
+            Details = $"Order {order.Id} was cancelled."
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return MapToResponse(order);
+    }
+    catch
+    {
+        await transaction.RollbackAsync(cancellationToken);
+        throw;
+    }
+}
+
 
     private static OrderResponse MapToResponse(Order order)
     {
