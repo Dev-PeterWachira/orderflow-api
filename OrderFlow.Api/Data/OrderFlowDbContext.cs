@@ -132,6 +132,34 @@ namespace OrderFlow.Api.Data
     .HasIndex(p => p.OrderId)
     .IsUnique()
     .HasDatabaseName("IX_Payments_OrderId");
+
+modelBuilder.Entity<AuditLog>(entity =>
+{
+    entity.HasKey(a => a.Id);
+
+    entity.Property(a => a.ActorId)
+        .HasMaxLength(100)
+        .IsRequired();
+
+    entity.Property(a => a.ActorRole)
+        .HasMaxLength(50)
+        .IsRequired();
+
+    entity.Property(a => a.Action)
+        .HasMaxLength(100)
+        .IsRequired();
+
+    entity.Property(a => a.EntityType)
+        .HasMaxLength(100)
+        .IsRequired();
+
+    entity.Property(a => a.Details)
+        .HasMaxLength(1000);
+
+    entity.HasIndex(a => a.TimestampUtc);
+    entity.HasIndex(a => new { a.EntityType, a.EntityId });
+});
+
 }
     }
 }
