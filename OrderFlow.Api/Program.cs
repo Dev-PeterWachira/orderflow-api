@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OrderFlow.Api.Data;
 using OrderFlow.Api.Services;
+using OrderFlow.Api.Health;
 
 var currentDirectory = Directory.GetCurrentDirectory();
 var envPath = Path.Combine(currentDirectory, ".env");
@@ -33,6 +34,9 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks()
+     .AddCheck<DatabaseHealthCheck>("database");
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<JwtTokenService>();
@@ -84,8 +88,10 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-
 var app = builder.Build();
+
+// Handle unexpected exceptions without exposing internal details.
+app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 
@@ -93,5 +99,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Health endpoint.
+app.MapHealthChecks("/health");
 
 app.Run();
