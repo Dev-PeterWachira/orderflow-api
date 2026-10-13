@@ -10,6 +10,8 @@ namespace OrderFlow.Api.Tests;
 
 public class OrderServiceTests
 {
+    private const int TestCustomerId = 1;
+
     private static async Task<OrderFlowDbContext> CreateContextAsync(
         SqliteConnection connection)
     {
@@ -24,7 +26,7 @@ public class OrderServiceTests
     }
 
     private static CreateOrderRequest ValidRequest(
-        int customerId = 1,
+        int customerId = TestCustomerId,
         int productId = 1,
         int quantity = 2)
     {
@@ -73,7 +75,9 @@ public class OrderServiceTests
 
         var service = new OrderService(context);
 
-        var result = await service.CreateAsync(ValidRequest());
+        var result = await service.CreateAsync(
+            ValidRequest(),
+            TestCustomerId);
 
         Assert.NotNull(result);
         Assert.Equal(9000m, result.Total);
@@ -92,7 +96,9 @@ public class OrderServiceTests
         await using var context = await CreateContextAsync(connection);
         var service = new OrderService(context);
 
-        var result = await service.CreateAsync(ValidRequest(customerId: 999));
+        var result = await service.CreateAsync(
+            ValidRequest(customerId: 999),
+            customerId: 999);
 
         Assert.Null(result);
         Assert.Empty(await context.Orders.ToListAsync());
@@ -117,7 +123,9 @@ public class OrderServiceTests
         var service = new OrderService(context);
 
         await Assert.ThrowsAsync<InvalidOrderException>(
-            () => service.CreateAsync(ValidRequest(productId: 999)));
+            () => service.CreateAsync(
+                ValidRequest(productId: 999),
+                TestCustomerId));
 
         Assert.Empty(await context.Orders.ToListAsync());
     }
@@ -133,7 +141,10 @@ public class OrderServiceTests
         await SeedCustomerAndProductAsync(context);
 
         var service = new OrderService(context);
-        var created = await service.CreateAsync(ValidRequest());
+
+        var created = await service.CreateAsync(
+            ValidRequest(),
+            TestCustomerId);
 
         Assert.NotNull(created);
 
@@ -141,177 +152,214 @@ public class OrderServiceTests
         product.Price = 6000m;
         await context.SaveChangesAsync();
 
-        var retrieved = await service.GetByIdAsync(created.Id);
+        var retrieved = await service.GetByIdAsync(
+            created.Id,
+            TestCustomerId);
 
         Assert.NotNull(retrieved);
         Assert.Equal(9000m, retrieved.Total);
         Assert.Equal(4500m, retrieved.Items[0].UnitPrice);
     }
 
+    [Fact]
+    public async Task ProcessAsync_CompletesOrderAndReducesStock()
+    {
+        await using var connection =
+            new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using var context = await CreateContextAsync(connection);
+        await SeedCustomerAndProductAsync(context);
+
+        var service = new OrderService(context);
+
+        var created = await service.CreateAsync(
+            ValidRequest(),
+            TestCustomerId);
+
+        Assert.NotNull(created);
+
+        var result = await service.ProcessAsync(created.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal(OrderStatus.Completed, result.Status);
+
+        var product = await context.Products
+            .AsNoTracking()
+            .SingleAsync();
+
+        Assert.Equal(23, product.StockQuantity);
+
+        var payment = await context.Payments
+            .AsNoTracking()
+            .SingleAsync();
+
+        Assert.Equal(created.Id, payment.OrderId);
+        Assert.Equal(9000m, payment.Amount);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_InsufficientStock_RollsBackAllChanges()
+    {
+        await using var connection =
+            new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using var context = await CreateContextAsync(connection);
+        await SeedCustomerAndProductAsync(context);
+
+        context.Products.Add(new Product
+        {
+            Name = "Monitor",
+            Price = 15000m,
+            StockQuantity = 1
+        });
+
+        await context.SaveChangesAsync();
+
+        var service = new OrderService(context);
+
+        var request = new CreateOrderRequest
+        {
+            CustomerId = TestCustomerId,
+            Items =
+            [
+                new CreateOrderItemRequest
+                {
+                    ProductId = 1,
+                    Quantity = 2
+                },
+                new CreateOrderItemRequest
+                {
+                    ProductId = 2,
+                    Quantity = 2
+                }
+            ]
+        };
+
+        var created = await service.CreateAsync(
+            request,
+            TestCustomerId);
+
+        Assert.NotNull(created);
+
+        await Assert.ThrowsAsync<InvalidOrderException>(
+            () => service.ProcessAsync(created.Id));
+
+        var products = await context.Products
+            .AsNoTracking()
+            .OrderBy(p => p.Id)
+            .ToListAsync();
+
+        Assert.Equal(25, products[0].StockQuantity);
+        Assert.Equal(1, products[1].StockQuantity);
+
+        var order = await context.Orders
+            .AsNoTracking()
+            .SingleAsync(o => o.Id == created.Id);
+
+        Assert.Equal(OrderStatus.Pending, order.Status);
+        Assert.Empty(
+            await context.Payments.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ProcessAsync_RejectsDuplicateProcessing()
+    {
+        await using var connection =
+            new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using var context = await CreateContextAsync(connection);
+        await SeedCustomerAndProductAsync(context);
+
+        var service = new OrderService(context);
+
+        var created = await service.CreateAsync(
+            ValidRequest(),
+            TestCustomerId);
+
+        Assert.NotNull(created);
+
+        await service.ProcessAsync(created.Id);
+
+        await Assert.ThrowsAsync<InvalidOrderException>(
+            () => service.ProcessAsync(created.Id));
+
+        var product = await context.Products
+            .AsNoTracking()
+            .SingleAsync();
+
+        Assert.Equal(23, product.StockQuantity);
+        Assert.Single(
+            await context.Payments.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ProcessAsync_PaymentInsertFails_RollsBackStockAndStatus()
+    {
+        await using var connection =
+            new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using var context = await CreateContextAsync(connection);
+        await SeedCustomerAndProductAsync(context);
+
+        var service = new OrderService(context);
+
+        var created = await service.CreateAsync(
+            ValidRequest(),
+            TestCustomerId);
+
+        Assert.NotNull(created);
+
+        context.Payments.Add(new Payment
+        {
+            OrderId = created.Id,
+            Amount = 1m
+        });
+
+        await context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<DbUpdateException>(
+            () => service.ProcessAsync(created.Id));
+
+        var product = await context.Products
+            .AsNoTracking()
+            .SingleAsync();
+
+        var order = await context.Orders
+            .AsNoTracking()
+            .SingleAsync(o => o.Id == created.Id);
+
+        Assert.Equal(25, product.StockQuantity);
+        Assert.Equal(OrderStatus.Pending, order.Status);
+        Assert.Single(
+            await context.Payments.AsNoTracking().ToListAsync());
+    }
+
     
 [Fact]
-public async Task ProcessAsync_CompletesOrderAndReducesStock()
+public async Task CreateAsync_UsesAuthenticatedCustomerId_NotRequestCustomerId()
 {
+    // Arrange
     await using var connection =
         new SqliteConnection("Data Source=:memory:");
+
     await connection.OpenAsync();
 
     await using var context = await CreateContextAsync(connection);
     await SeedCustomerAndProductAsync(context);
 
     var service = new OrderService(context);
-    var created = await service.CreateAsync(ValidRequest());
+    var request = ValidRequest(customerId: 999);
 
-    Assert.NotNull(created);
+    // Act
+    var order = await service.CreateAsync(request, TestCustomerId);
 
-    var result = await service.ProcessAsync(created.Id);
-
-    Assert.NotNull(result);
-    Assert.Equal(OrderStatus.Completed, result.Status);
-
-    var product = await context.Products
-        .AsNoTracking()
-        .SingleAsync();
-
-    Assert.Equal(23, product.StockQuantity);
-
-    var payment = await context.Payments
-        .AsNoTracking()
-        .SingleAsync();
-
-    Assert.Equal(created.Id, payment.OrderId);
-    Assert.Equal(9000m, payment.Amount);
-}
-
-
-[Fact]
-public async Task ProcessAsync_InsufficientStock_RollsBackAllChanges()
-{
-    await using var connection =
-        new SqliteConnection("Data Source=:memory:");
-    await connection.OpenAsync();
-
-    await using var context = await CreateContextAsync(connection);
-    await SeedCustomerAndProductAsync(context);
-
-    context.Products.Add(new Product
-    {
-        Name = "Monitor",
-        Price = 15000m,
-        StockQuantity = 1
-    });
-
-    await context.SaveChangesAsync();
-
-    var service = new OrderService(context);
-
-    var request = new CreateOrderRequest
-    {
-        CustomerId = 1,
-        Items =
-        [
-            new CreateOrderItemRequest
-            {
-                ProductId = 1,
-                Quantity = 2
-            },
-            new CreateOrderItemRequest
-            {
-                ProductId = 2,
-                Quantity = 2
-            }
-        ]
-    };
-
-    var created = await service.CreateAsync(request);
-    Assert.NotNull(created);
-
-    await Assert.ThrowsAsync<InvalidOrderException>(
-        () => service.ProcessAsync(created.Id));
-
-    var products = await context.Products
-        .AsNoTracking()
-        .OrderBy(p => p.Id)
-        .ToListAsync();
-
-    Assert.Equal(25, products[0].StockQuantity);
-    Assert.Equal(1, products[1].StockQuantity);
-
-    var order = await context.Orders
-        .AsNoTracking()
-        .SingleAsync(o => o.Id == created.Id);
-
-    Assert.Equal(OrderStatus.Pending, order.Status);
-    Assert.Empty(await context.Payments.AsNoTracking().ToListAsync());
-}
-
- 
-[Fact]
-public async Task ProcessAsync_RejectsDuplicateProcessing()
-{
-    await using var connection =
-        new SqliteConnection("Data Source=:memory:");
-    await connection.OpenAsync();
-
-    await using var context = await CreateContextAsync(connection);
-    await SeedCustomerAndProductAsync(context);
-
-    var service = new OrderService(context);
-    var created = await service.CreateAsync(ValidRequest());
-
-    Assert.NotNull(created);
-
-    await service.ProcessAsync(created.Id);
-
-    await Assert.ThrowsAsync<InvalidOrderException>(
-        () => service.ProcessAsync(created.Id));
-
-    var product = await context.Products
-        .AsNoTracking()
-        .SingleAsync();
-
-    Assert.Equal(23, product.StockQuantity);
-    Assert.Single(await context.Payments.AsNoTracking().ToListAsync());
-}
-
- 
-[Fact]
-public async Task ProcessAsync_PaymentInsertFails_RollsBackStockAndStatus()
-{
-    await using var connection =
-        new SqliteConnection("Data Source=:memory:");
-    await connection.OpenAsync();
-
-    await using var context = await CreateContextAsync(connection);
-    await SeedCustomerAndProductAsync(context);
-
-    var service = new OrderService(context);
-    var created = await service.CreateAsync(ValidRequest());
-
-    Assert.NotNull(created);
-
-    context.Payments.Add(new Payment
-    {
-        OrderId = created.Id,
-        Amount = 1m
-    });
-
-    await context.SaveChangesAsync();
-
-    await Assert.ThrowsAsync<DbUpdateException>(
-        () => service.ProcessAsync(created.Id));
-
-    var product = await context.Products
-        .AsNoTracking()
-        .SingleAsync();
-
-    var order = await context.Orders
-        .AsNoTracking()
-        .SingleAsync(o => o.Id == created.Id);
-
-    Assert.Equal(25, product.StockQuantity);
-    Assert.Equal(OrderStatus.Pending, order.Status);
-    Assert.Single(await context.Payments.AsNoTracking().ToListAsync());
+    // Assert
+    Assert.NotNull(order);
+    Assert.Equal(TestCustomerId, order.CustomerId);
 }
 
     [Fact]
@@ -326,7 +374,7 @@ public async Task ProcessAsync_PaymentInsertFails_RollsBackStockAndStatus()
 
         var request = new CreateOrderRequest
         {
-            CustomerId = 1,
+            CustomerId = TestCustomerId,
             Items =
             [
                 new CreateOrderItemRequest
@@ -345,7 +393,9 @@ public async Task ProcessAsync_PaymentInsertFails_RollsBackStockAndStatus()
         var service = new OrderService(context);
 
         await Assert.ThrowsAsync<InvalidOrderException>(
-            () => service.CreateAsync(request));
+            () => service.CreateAsync(
+                request,
+                TestCustomerId));
 
         Assert.Empty(await context.Orders.ToListAsync());
     }

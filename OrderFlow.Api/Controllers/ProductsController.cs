@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using OrderFlow.Api.DTOs.Products;
 using OrderFlow.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace OrderFlow.Api.Controllers;
 
@@ -14,7 +15,7 @@ public class ProductsController : ControllerBase
     {
         _productService = productService;
     }
-
+    [Authorize(Roles = "Employee")]
     [HttpPost]
 public async Task<ActionResult<ProductResponse>> Create(ProductCreateRequest request)
 {
@@ -57,7 +58,7 @@ public async Task<IActionResult> GetAll(
         PageSize = pageSize
     });
 }
-
+[Authorize(Roles = "Employee")]
 [HttpPut("{id:int}")]
 public async Task<ActionResult<ProductResponse>> Update(int id,ProductUpdateRequest request)
 {
@@ -68,7 +69,7 @@ public async Task<ActionResult<ProductResponse>> Update(int id,ProductUpdateRequ
 
     return Ok(product);
 }
-
+[Authorize(Roles = "Employee")]
 [HttpDelete("{id:int}")]
 public async Task<IActionResult> Delete(int id)
 {

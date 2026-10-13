@@ -7,7 +7,17 @@ using Microsoft.IdentityModel.Tokens;
 using OrderFlow.Api.Data;
 using OrderFlow.Api.Services;
 
-Env.Load();
+var currentDirectory = Directory.GetCurrentDirectory();
+var envPath = Path.Combine(currentDirectory, ".env");
+
+if (!File.Exists(envPath))
+{
+    throw new FileNotFoundException(
+        "Local .env file was not found.",
+        envPath);
+}
+
+Env.Load(envPath);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +33,13 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<JwtTokenService>();
+
+builder.Services.AddScoped<
+    Microsoft.AspNetCore.Identity.IPasswordHasher<OrderFlow.Api.Models.Customer>,
+    Microsoft.AspNetCore.Identity.PasswordHasher<OrderFlow.Api.Models.Customer>>();
+
 // JWT configuration
 var issuer = builder.Configuration["Jwt:Issuer"]
     ?? throw new InvalidOperationException("JWT issuer is missing.");
@@ -30,7 +47,7 @@ var issuer = builder.Configuration["Jwt:Issuer"]
 var audience = builder.Configuration["Jwt:Audience"]
     ?? throw new InvalidOperationException("JWT audience is missing.");
 
-var jwtKey = builder.Configuration["JWT:KEY"]
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
     ?? throw new InvalidOperationException("JWT signing key is missing.");
 
 if (Encoding.UTF8.GetByteCount(jwtKey) < 32)

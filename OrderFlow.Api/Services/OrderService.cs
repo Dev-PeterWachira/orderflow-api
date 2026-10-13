@@ -14,11 +14,11 @@ public class OrderService : IOrderService
         _context = context;
     }
 
-    public async Task<OrderResponse?> CreateAsync (CreateOrderRequest request)
+    public async Task<OrderResponse?> CreateAsync (CreateOrderRequest request, int customerId)
     {
         // 1. Ensure the customer exists.
         var customerExists = await _context.Customers
-            .AnyAsync(c => c.Id == request.CustomerId);
+            .AnyAsync(c => c.Id == customerId);
 
         if (!customerExists)
             return null;
@@ -50,7 +50,7 @@ public class OrderService : IOrderService
         // 3. Construct the order and snapshot each current product price.
         var order = new Order
         {
-            CustomerId = request.CustomerId,
+            CustomerId = customerId,
             Status = OrderStatus.Pending,
             CreatedAt = DateTime.UtcNow,
             OrderItems = request.Items.Select(item =>
@@ -78,25 +78,38 @@ public class OrderService : IOrderService
         return MapToResponse(order);
     }
 
-    public async Task<OrderResponse?> GetByIdAsync(int id)
+    public async Task<OrderResponse?> GetByIdAsync(int id, int? customerId)
     {
-        var order = await _context.Orders
+        var query =  _context.Orders
             .AsNoTracking()
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Product)
-            .FirstOrDefaultAsync(o => o.Id == id);
+            .AsQueryable();
+
+        if (customerId.HasValue)
+        {
+            query = query.Where(o => o.CustomerId == customerId.Value);
+        }
+
+        var order = await query.FirstOrDefaultAsync(o => o.Id == id);
 
         return order is null ? null : MapToResponse(order);
     }
 
-    public async Task<(IEnumerable<OrderResponse> Items, int TotalCount)> GetAllAsync(int page, int pageSize)
+    public async Task<(IEnumerable<OrderResponse> Items, int TotalCount)> GetAllAsync(int page, int pageSize, int? customerId)
     {
         var query = _context.Orders
             .AsNoTracking()
             .Include(o => o.OrderItems)
-                .ThenInclude(oi => oi.Product);
+                .ThenInclude(oi => oi.Product)
+            .AsQueryable();
 
-        var totalCount = await _context.Orders.CountAsync();
+            if(customerId.HasValue)
+        {
+            query = query.Where(o => o.CustomerId == customerId.Value);
+        }
+
+        var totalCount = await query.CountAsync();
 
         var orders = await query
             .OrderByDescending(o => o.CreatedAt)

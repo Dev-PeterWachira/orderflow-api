@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using OrderFlow.Api.DTOs.Orders;
 using OrderFlow.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace OrderFlow.Api.Controllers;
-
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
@@ -21,7 +23,13 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            var order = await _orderService.CreateAsync(request);
+
+            var customerId = GetAuthenticatedCustomerId();
+
+            if(!customerId.HasValue)
+               return Forbid();
+
+            var order = await _orderService.CreateAsync(request, customerId.Value);
 
             if (order is null)
                 return NotFound("Customer was not found.");
@@ -40,7 +48,13 @@ public class OrdersController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<OrderResponse>> GetById(int id)
     {
-        var order = await _orderService.GetByIdAsync(id);
+
+        var customerId = IsEmployee ? null : GetAuthenticatedCustomerId();
+        
+        if(!IsEmployee && !customerId.HasValue)
+           return Forbid();
+
+        var order = await _orderService.GetByIdAsync(id, customerId);
 
         if (order is null)
             return NotFound();
@@ -53,11 +67,18 @@ public class OrdersController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
     {
+          
+          var customerId = IsEmployee ? null : GetAuthenticatedCustomerId();
+
+          if(!IsEmployee && !customerId.HasValue)
+             return Forbid();
+
+
         if (page < 1 || pageSize < 1 || pageSize > 100)
             return BadRequest(
                 "Page must be positive and pageSize must be between 1 and 100.");
 
-        var result = await _orderService.GetAllAsync(page, pageSize);
+        var result = await _orderService.GetAllAsync(page,pageSize,customerId);
 
         return Ok(new
         {
@@ -70,7 +91,7 @@ public class OrdersController : ControllerBase
         });
     }
 
-    
+  [Authorize(Roles = "Employee")]  
  [HttpPost("{id:int}/process")]
  public async Task<ActionResult<OrderResponse>> Process(int id,CancellationToken cancellationToken)
  {
@@ -95,4 +116,14 @@ public class OrdersController : ControllerBase
             });
         }
  }
+
+
+   private int? GetAuthenticatedCustomerId()
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return int.TryParse(value, out var customerId) ? customerId : null;
+    }
+
+    private bool IsEmployee => User.IsInRole("Employee");
  }

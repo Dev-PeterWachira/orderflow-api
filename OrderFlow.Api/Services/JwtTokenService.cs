@@ -26,7 +26,7 @@ public class JwtTokenService
         var audience = _configuration["Jwt:Audience"]
             ?? throw new InvalidOperationException("JWT audience is missing.");
 
-        var key = _configuration["JWT:KEY"]
+        var key = _configuration["JWT_KEY"]
             ?? throw new InvalidOperationException("JWT signing key is missing.");
 
         var expirationMinutes =
