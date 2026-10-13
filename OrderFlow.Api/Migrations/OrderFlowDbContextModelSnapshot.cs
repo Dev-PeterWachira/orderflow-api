@@ -42,6 +42,10 @@ namespace OrderFlow.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Customers_Email");
+
                     b.ToTable("Customers");
                 });
 
