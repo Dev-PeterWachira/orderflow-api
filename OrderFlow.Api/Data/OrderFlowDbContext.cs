@@ -81,6 +81,12 @@ namespace OrderFlow.Api.Data
         .IsRequired()
         .HasMaxLength(320);
 
+    modelBuilder.Entity<Customer>()
+        .HasIndex(c => c.Email)
+        .IsUnique()
+        .HasDatabaseName("IX_Customers_Email");    
+        
+
     modelBuilder.Entity<Order>()
     .HasIndex(o => new { o.Status, o.CreatedAt })
     .HasDatabaseName("IX_Orders_Status_CreatedAt");
