@@ -24,6 +24,8 @@ namespace OrderFlow.Api.Data
 
         public DbSet<Payment> Payments => Set<Payment>();
 
+        public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
