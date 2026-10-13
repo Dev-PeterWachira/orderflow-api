@@ -14,69 +14,111 @@ public class OrderService : IOrderService
         _context = context;
     }
 
-    public async Task<OrderResponse?> CreateAsync (CreateOrderRequest request, int customerId)
+    
+public async Task<OrderResponse?> CreateAsync(
+    CreateOrderRequest request,
+    int customerId)
+{
+    // 1. Ensure the authenticated customer exists.
+    var customerExists = await _context.Customers
+        .AnyAsync(c => c.Id == customerId);
+
+    if (!customerExists)
+        return null;
+
+    // 2. Validate the order contains items.
+    if (request.Items.Count == 0)
     {
-        // 1. Ensure the customer exists.
-        var customerExists = await _context.Customers
-            .AnyAsync(c => c.Id == customerId);
+        throw new InvalidOrderException(
+            "An order must contain at least one item.");
+    }
 
-        if (!customerExists)
-            return null;
+    // 3. Ensure each product appears only once.
+    var productIds = request.Items
+        .Select(item => item.ProductId)
+        .ToList();
 
-        if (request.Items.Count == 0)
-            throw new InvalidOrderException(
-                "An order must contain at least one item.");
+    if (productIds.Distinct().Count() != productIds.Count)
+    {
+        throw new InvalidOrderException(
+            "A product can only appear once per order.");
+    }
 
-        // Keep one line per product in an order.
-        // Select extracts product ids in this case. Distinct() removes duplicates
-        var productIds = request.Items
-            .Select(i => i.ProductId)
-            .ToList();
+    // 4. Load trusted product data from the database.
+    var products = await _context.Products
+        .Where(product => productIds.Contains(product.Id))
+        .ToDictionaryAsync(product => product.Id);
 
-        if (productIds.Distinct().Count() != productIds.Count) // if the number of distinct ids < original count, duplicate product ids were supplied. 
-            throw new InvalidOrderException(
-                "A product can only appear once per order.");
+    if (products.Count != productIds.Count)
+    {
+        throw new InvalidOrderException(
+            "One or more product IDs are invalid.");
+    }
 
-        // 2. Load trusted product data from the database.
-        var products = await _context.Products
-            .Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id);
-
-        // Reject the entire order if any product doesn't exist.
-        if (products.Count != productIds.Count)
-            throw new InvalidOrderException(
-                "One or more product IDs are invalid.");
-
-        // 3. Construct the order and snapshot each current product price.
-        var order = new Order
+    // 5. Validate quantities and construct the order.
+    var orderItems = request.Items.Select(item =>
+    {
+        if (item.Quantity <= 0)
         {
-            CustomerId = customerId,
-            Status = OrderStatus.Pending,
-            CreatedAt = DateTime.UtcNow,
-            OrderItems = request.Items.Select(item =>
-            {
-                var product = products[item.ProductId];
+            throw new InvalidOrderException(
+                "Quantity must be greater than zero.");
+        }
 
-                if (item.Quantity <= 0)
-                    throw new InvalidOrderException("Quantity must be greater than zero.");
+        var product = products[item.ProductId];
 
-                return new OrderItem
-                {
-                    ProductId = product.Id,
-                    Product = product,
-                    Quantity = item.Quantity,
-                    UnitPrice = product.Price
-                };
-            }).ToList()
+        return new OrderItem
+        {
+            ProductId = product.Id,
+            Product = product,
+            Quantity = item.Quantity,
+            UnitPrice = product.Price
         };
+    }).ToList();
 
+    var order = new Order
+    {
+        CustomerId = customerId,
+        Status = OrderStatus.Pending,
+        CreatedAt = DateTime.UtcNow,
+        OrderItems = orderItems
+    };
+
+    // 6. Persist the order and audit entry atomically.
+    await using var transaction =
+        await _context.Database.BeginTransactionAsync();
+
+    try
+    {
         _context.Orders.Add(order);
 
-        // A single SaveChanges call persists the order and its items.
+        // First save obtains the database-generated order ID.
         await _context.SaveChangesAsync();
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            ActorId = customerId.ToString(),
+            ActorRole = "Customer",
+            Action = "OrderCreated",
+            EntityType = "Order",
+            EntityId = order.Id,
+            TimestampUtc = DateTime.UtcNow,
+            Details =
+                $"Order created with {order.OrderItems.Count} item(s)."
+        });
+
+        // Persist the audit record in the same transaction.
+        await _context.SaveChangesAsync();
+
+        await transaction.CommitAsync();
 
         return MapToResponse(order);
     }
+    catch
+    {
+        await transaction.RollbackAsync();
+        throw;
+    }
+}
 
     public async Task<OrderResponse?> GetByIdAsync(int id, int? customerId)
     {
