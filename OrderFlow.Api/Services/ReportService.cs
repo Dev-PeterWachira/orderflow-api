@@ -3,6 +3,7 @@ using OrderFlow.Api.Data;
 using OrderFlow.Api.DTOs.Reports;
 using OrderFlow.Api.Models;
 using OrderFlow.Api.Models.Reporting;
+using OrderFlow.Api.DTOs.Common;
 
 namespace OrderFlow.Api.Services;
 
@@ -133,37 +134,69 @@ namespace OrderFlow.Api.Services;
         return rows.Select(MapProductSales).ToList();
     }
 
-    public async Task<IReadOnlyList<CustomerOrderHistoryResponse>>
-        GetCustomerOrderHistoryAsync(
-            int customerId,
-            CancellationToken cancellationToken = default)
-    {
-        var rows = await dbContext.CustomerOrderHistoryRows
-            .FromSqlInterpolated($"""
-                SELECT
-                    o.Id AS OrderId,
-                    o.CreatedAt,
-                    CAST(o.Status AS int) AS Status,
-                    COALESCE(SUM(oi.Quantity), 0) AS ItemsCount,
-                    COALESCE(SUM(oi.UnitPrice * oi.Quantity), 0) AS Total
-                FROM dbo.Orders AS o
-                LEFT JOIN dbo.OrderItems AS oi ON oi.OrderId = o.Id
-                WHERE o.CustomerId = {customerId}
-                GROUP BY o.Id, o.CreatedAt, o.Status
-                ORDER BY o.CreatedAt DESC, o.Id DESC
-                """)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
+    
+public async Task<PagedResponse<CustomerOrderHistoryResponse>>
+    GetCustomerOrderHistoryAsync(
+        int customerId,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken cancellationToken = default)
+{
+    if (customerId <= 0)
+        throw new ArgumentOutOfRangeException(nameof(customerId));
 
-        return rows.Select(row => new CustomerOrderHistoryResponse
-        {
-            OrderId = row.OrderId,
-            CreatedAt = row.CreatedAt,
-            Status = (OrderStatus)row.Status,
-            ItemsCount = row.ItemsCount,
-            Total = row.Total
-        }).ToList();
-    }
+    if (page < 1)
+        throw new ArgumentOutOfRangeException(nameof(page));
+
+    if (pageSize is < 1 or > 100)
+        throw new ArgumentOutOfRangeException(
+            nameof(pageSize), "Page size must be between 1 and 100.");
+
+    var totalCount = await dbContext.Orders
+        .CountAsync(
+            order => order.CustomerId == customerId,
+            cancellationToken);
+
+    var offset = (int)Math.Min(
+        ((long)page - 1) * pageSize,
+        int.MaxValue);
+
+    var rows = await dbContext.CustomerOrderHistoryRows
+        .FromSqlInterpolated($"""
+            SELECT
+                o.Id AS OrderId,
+                o.CreatedAt,
+                CAST(o.Status AS int) AS Status,
+                COALESCE(SUM(oi.Quantity), 0) AS ItemsCount,
+                COALESCE(SUM(oi.UnitPrice * oi.Quantity), 0) AS Total
+            FROM dbo.Orders AS o
+            LEFT JOIN dbo.OrderItems AS oi ON oi.OrderId = o.Id
+            WHERE o.CustomerId = {customerId}
+            GROUP BY o.Id, o.CreatedAt, o.Status
+            ORDER BY o.CreatedAt DESC, o.Id DESC
+            OFFSET {offset} ROWS
+            FETCH NEXT {pageSize} ROWS ONLY
+            """)
+        .AsNoTracking()
+        .ToListAsync(cancellationToken);
+
+    var items = rows.Select(row => new CustomerOrderHistoryResponse
+    {
+        OrderId = row.OrderId,
+        CreatedAt = row.CreatedAt,
+        Status = (OrderStatus)row.Status,
+        ItemsCount = row.ItemsCount,
+        Total = row.Total
+    }).ToList();
+
+    return new PagedResponse<CustomerOrderHistoryResponse>
+    {
+        Items = items,
+        Page = page,
+        PageSize = pageSize,
+        TotalCount = totalCount
+    };
+}
 
     private static ProductSalesResponse MapProductSales(ProductSalesRow row)
     {

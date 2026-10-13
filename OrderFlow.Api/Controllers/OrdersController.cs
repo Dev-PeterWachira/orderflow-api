@@ -19,7 +19,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<OrderResponse>> Create(CreateOrderRequest request)
+    public async Task<ActionResult<OrderResponse>> Create(CreateOrderRequest request, CancellationToken cancellationToken)
     {
         try
         {
@@ -29,7 +29,7 @@ public class OrdersController : ControllerBase
             if(!customerId.HasValue)
                return Forbid();
 
-            var order = await _orderService.CreateAsync(request, customerId.Value);
+            var order = await _orderService.CreateAsync(request, customerId.Value,cancellationToken);
 
             if (order is null)
                 return NotFound("Customer was not found.");
@@ -46,7 +46,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<OrderResponse>> GetById(int id)
+    public async Task<ActionResult<OrderResponse>> GetById(int id, CancellationToken cancellationToken)
     {
 
         var customerId = IsEmployee ? null : GetAuthenticatedCustomerId();
@@ -54,7 +54,7 @@ public class OrdersController : ControllerBase
         if(!IsEmployee && !customerId.HasValue)
            return Forbid();
 
-        var order = await _orderService.GetByIdAsync(id, customerId);
+        var order = await _orderService.GetByIdAsync(id, customerId, cancellationToken);
 
         if (order is null)
             return NotFound();
@@ -62,35 +62,51 @@ public class OrdersController : ControllerBase
         return Ok(order);
     }
 
-    [HttpGet]
-    public async Task<IActionResult> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10)
+   
+[HttpGet]
+public async Task<IActionResult> GetAll(
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] int? customerId = null,
+    CancellationToken cancellationToken = default)
+{
+    // Employees can view orders across customers.
+    // Customers can only view their own orders.
+    var authenticatedCustomerId = IsEmployee
+        ? null
+        : GetAuthenticatedCustomerId();
+
+    if (!IsEmployee && !authenticatedCustomerId.HasValue)
+        return Forbid();
+
+    if (page < 1 || pageSize < 1 || pageSize > 100)
     {
-          
-          var customerId = IsEmployee ? null : GetAuthenticatedCustomerId();
-
-          if(!IsEmployee && !customerId.HasValue)
-             return Forbid();
-
-
-        if (page < 1 || pageSize < 1 || pageSize > 100)
-            return BadRequest(
-                "Page must be positive and pageSize must be between 1 and 100.");
-
-        var result = await _orderService.GetAllAsync(page,pageSize,customerId);
-
-        return Ok(new
-        {
-            result.Items,
-            result.TotalCount,
-            Page = page,
-            PageSize = pageSize,
-            TotalPages = (int)Math.Ceiling(
-                result.TotalCount / (double)pageSize)
-        });
+        return BadRequest(
+            "Page must be positive and pageSize must be between 1 and 100.");
     }
 
+    // Never allow a customer to select another customer's orders.
+    // Only employees can use the customerId query parameter.
+    var effectiveCustomerId = IsEmployee
+        ? customerId
+        : authenticatedCustomerId;
+
+    var result = await _orderService.GetAllAsync(
+        page,
+        pageSize,
+        effectiveCustomerId,
+        cancellationToken);
+
+    return Ok(new
+    {
+        result.Items,
+        result.TotalCount,
+        Page = page,
+        PageSize = pageSize,
+        TotalPages = (int)Math.Ceiling(
+            result.TotalCount / (double)pageSize)
+    });
+}
   [Authorize(Roles = "Employee")]  
  [HttpPost("{id:int}/process")]
  public async Task<ActionResult<OrderResponse>> Process(int id,CancellationToken cancellationToken)

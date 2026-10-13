@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using OrderFlow.Api.DTOs.Reports;
 using OrderFlow.Api.Services;
+using OrderFlow.Api.DTOs.Common;
 
 namespace OrderFlow.Api.Controllers;
 
@@ -98,11 +99,14 @@ public async Task<ActionResult<IReadOnlyList<ProductSalesResponse>>> GetTopProdu
     return Ok(result);
 }
 
+
 [HttpGet("customers/{customerId:int}/orders")]
-public async Task<ActionResult<IReadOnlyList<CustomerOrderHistoryResponse>>>
+public async Task<ActionResult<PagedResponse<CustomerOrderHistoryResponse>>>
     GetCustomerOrderHistory(
         int customerId,
-        CancellationToken cancellationToken)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
 {
     if (customerId <= 0)
     {
@@ -112,8 +116,24 @@ public async Task<ActionResult<IReadOnlyList<CustomerOrderHistoryResponse>>>
         });
     }
 
+    if (page < 1)
+    {
+        return BadRequest(new
+        {
+            message = "page must be at least 1."
+        });
+    }
+
+    if (pageSize is < 1 or > 100)
+    {
+        return BadRequest(new
+        {
+            message = "pageSize must be between 1 and 100."
+        });
+    }
+
     var result = await reportService.GetCustomerOrderHistoryAsync(
-        customerId, cancellationToken);
+        customerId, page, pageSize, cancellationToken);
 
     return Ok(result);
 }

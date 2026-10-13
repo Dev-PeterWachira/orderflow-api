@@ -15,13 +15,11 @@ public class OrderService : IOrderService
     }
 
     
-public async Task<OrderResponse?> CreateAsync(
-    CreateOrderRequest request,
-    int customerId)
+public async Task<OrderResponse?> CreateAsync(CreateOrderRequest request,int customerId, CancellationToken cancellationToken = default)
 {
     // 1. Ensure the authenticated customer exists.
     var customerExists = await _context.Customers
-        .AnyAsync(c => c.Id == customerId);
+        .AnyAsync(c => c.Id == customerId,cancellationToken);
 
     if (!customerExists)
         return null;
@@ -47,7 +45,7 @@ public async Task<OrderResponse?> CreateAsync(
     // 4. Load trusted product data from the database.
     var products = await _context.Products
         .Where(product => productIds.Contains(product.Id))
-        .ToDictionaryAsync(product => product.Id);
+        .ToDictionaryAsync(product => product.Id, cancellationToken);
 
     if (products.Count != productIds.Count)
     {
@@ -85,14 +83,14 @@ public async Task<OrderResponse?> CreateAsync(
 
     // 6. Persist the order and audit entry atomically.
     await using var transaction =
-        await _context.Database.BeginTransactionAsync();
+        await _context.Database.BeginTransactionAsync(cancellationToken);
 
     try
     {
         _context.Orders.Add(order);
 
         // First save obtains the database-generated order ID.
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         _context.AuditLogs.Add(new AuditLog
         {
@@ -107,20 +105,20 @@ public async Task<OrderResponse?> CreateAsync(
         });
 
         // Persist the audit record in the same transaction.
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
-        await transaction.CommitAsync();
+        await transaction.CommitAsync(cancellationToken);
 
         return MapToResponse(order);
     }
     catch
     {
-        await transaction.RollbackAsync();
+        await transaction.RollbackAsync(cancellationToken);
         throw;
     }
 }
 
-    public async Task<OrderResponse?> GetByIdAsync(int id, int? customerId)
+    public async Task<OrderResponse?> GetByIdAsync(int id, int? customerId, CancellationToken cancellationToken = default)
     {
         var query =  _context.Orders
             .AsNoTracking()
@@ -133,15 +131,16 @@ public async Task<OrderResponse?> CreateAsync(
             query = query.Where(o => o.CustomerId == customerId.Value);
         }
 
-        var order = await query.FirstOrDefaultAsync(o => o.Id == id);
+        var order = await query.FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
         return order is null ? null : MapToResponse(order);
     }
 
-    public async Task<(IEnumerable<OrderResponse> Items, int TotalCount)> GetAllAsync(int page, int pageSize, int? customerId)
+    public async Task<(IEnumerable<OrderResponse> Items, int TotalCount)> GetAllAsync(int page, int pageSize, int? customerId, CancellationToken cancellationToken = default)
     {
         var query = _context.Orders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Product)
             .AsQueryable();
@@ -151,14 +150,14 @@ public async Task<OrderResponse?> CreateAsync(
             query = query.Where(o => o.CustomerId == customerId.Value);
         }
 
-        var totalCount = await query.CountAsync();
+        var totalCount = await query.CountAsync(cancellationToken);
 
         var orders = await query
             .OrderByDescending(o => o.CreatedAt)
             .ThenByDescending(o => o.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return (orders.Select(MapToResponse), totalCount);
     }

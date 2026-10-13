@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OrderFlow.Api.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e4f1610df240fbac781d8bc57d000358221273b8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9bb22a8b761e298aab8e081be50672061bcbe110")]
 [assembly: System.Reflection.AssemblyProductAttribute("OrderFlow.Api.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OrderFlow.Api.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
